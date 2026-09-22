@@ -22,6 +22,10 @@
     @keyframes spin { to { transform:rotate(360deg); } }
     @keyframes popIn { 0%{transform:scale(0.5);opacity:0} 60%{transform:scale(1.15)} 100%{transform:scale(1);opacity:1} }
     .anim { animation: slideUp 0.2s ease; }
+    @keyframes ilBadgeIn { from{clip-path:inset(0 100% 0 -3px round 7px);} to{clip-path:inset(0 0% 0 -3px round 7px);} }
+    @keyframes ilBadgeOut { from{clip-path:inset(0 0% 0 -3px round 7px);} to{clip-path:inset(0 100% 0 -3px round 7px);} }
+    @keyframes ilClockTick { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
+    @keyframes ilClockGlow { 0%,100%{box-shadow:0 0 0 0 rgba(255,214,10,.4);} 50%{box-shadow:0 0 7px 2px rgba(255,214,10,.4);} }
     button:active { opacity: 0.7; transform: scale(0.97); }
     /* ===== v15 visual refresh ===== */
     html { background: #08080a; }
@@ -346,6 +350,32 @@ function ILChev(P){
   return ILh("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.4,strokeLinecap:"round",strokeLinejoin:"round","aria-hidden":true,style:{transform:P.up?"rotate(180deg)":"none",transition:"transform .2s",flexShrink:0}},
     ILh("path",{d:"M6 9l6 6 6-6"}));
 }
+var ILREST_YELLOW="#FFD60A";
+function ILClockIcon(P){
+  var sz=P&&P.size||13;
+  var animate=P&&P.animate;
+  return ILh("svg",{width:sz,height:sz,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.1,strokeLinecap:"round",strokeLinejoin:"round","aria-hidden":true,style:{flexShrink:0}},
+    ILh("circle",{cx:12,cy:12,r:8.5}),
+    ILh("g",{style:animate?{transformOrigin:"12px 12px",animation:"ilClockTick 2.2s linear infinite"}:null},
+      ILh("path",{d:"M12 7.5V12l3 2"})));
+}
+function ILRestFmt(sec){
+  sec=Math.max(0,Math.round(sec||0));
+  var m=Math.floor(sec/60),s2=sec%60;
+  return m>0?(m+":"+String(s2).padStart(2,"0")):(sec+"s");
+}
+function ILRestParse(str){
+  str=(str||"").trim();
+  if(!str)return null;
+  if(str.indexOf(":")!==-1){
+    var parts=str.split(":");
+    var m=parseInt(parts[0],10)||0,s2=parseInt(parts[1],10)||0;
+    return m*60+s2;
+  }
+  var num=parseFloat(str);
+  if(isNaN(num))return null;
+  return Math.round(num);
+}
 
 /* ---------- number stepper (for the set composer) ---------- */
 function ILStep(P){
@@ -502,10 +532,11 @@ function ILSet(P){
         ILh("button",{type:"button",onClick:function(ev){ev.stopPropagation();sw.close();setTimeout(function(){repRef.current&&repRef.current.focus();},0);},style:{width:64,height:38,borderRadius:10,border:"none",background:P.accent,color:"#fff",fontFamily:ILF.b,fontWeight:700,fontSize:13,cursor:"pointer"}},"تعديل"),
         ILh("button",{type:"button",onClick:function(ev){ev.stopPropagation();sw.close();P.onDelete();},style:{width:64,height:38,borderRadius:10,border:"none",background:"linear-gradient(180deg,#ff453a,#c4221c)",color:"#fff",fontFamily:ILF.b,fontWeight:700,fontSize:13,cursor:"pointer"}},"مسح")),
       ILh("div",{onClick:function(ev){if(sw.revealed){ev.preventDefault();sw.close();}},
-          style:{position:"relative",display:"grid",gridTemplateColumns:"34px 1fr 1fr",gap:8,alignItems:"center",padding:"5px 5px",background:"#0f0f12",transform:"translateX("+sw.x+"px)",transition:sw.anim?"transform .18s ease":"none"}},
+          style:{position:"relative",display:"grid",gridTemplateColumns:"34px 1fr 1fr 34px",gap:8,alignItems:"center",padding:"5px 5px",background:"#0f0f12",transform:"translateX("+sw.x+"px)",transition:sw.anim?"transform .18s ease":"none"}},
         ILh("div",{onClick:function(ev){ev.stopPropagation();setPickerOpen(!pickerOpen);},style:{width:32,height:32,borderRadius:9,background:badgeBg,border:st.color==="black"?"1px solid rgba(255,255,255,0.25)":st.color==="white"?"1px solid rgba(0,0,0,0.15)":"none",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:ILF.n,fontWeight:700,fontSize:13,color:st.color==="white"?"#111":"#fff",cursor:"pointer"}},badgeContent),
         inp(r,setR,"numeric","0",repRef),
-        inp(w,setW,"decimal","\u2014"))),
+        inp(w,setW,"decimal","\u2014"),
+        ILh("button",{type:"button",onClick:function(ev){ev.stopPropagation();P.onDelete();},title:"مسح المجموعة",style:{width:32,height:32,borderRadius:9,border:"1px solid rgba(255,69,58,0.4)",background:"rgba(255,69,58,0.12)",color:"#ff453a",fontFamily:ILF.n,fontWeight:700,fontSize:16,lineHeight:1,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},"\u2715"))),
     picker);
 }
 
@@ -518,6 +549,45 @@ function ILEx(P){
   var ens=c.useState(S.name),edName=ens[0],setEdName=ens[1];
   var ess=c.useState(S.sets||""),edSets=ess[0],setEdSets=ess[1];
   c.useEffect(function(){setEdName(S.name);setEdSets(S.sets||"");},[S.name,S.sets]);
+  /* ---- per-exercise custom rest time (set by the user, not auto-calculated) ---- */
+  var restKey=S._key||S.name;
+  var rrs=c.useState(function(){
+    try{var _r=JSON.parse(localStorage.getItem("ironlog_ex_rest")||"{}");return _r[restKey]>0?_r[restKey]:90;}catch(e){return 90;}
+  });
+  var restSec=rrs[0],setRestSecState=rrs[1];
+  var saveRestSec=function(sec){
+    setRestSecState(sec);
+    try{
+      var all=JSON.parse(localStorage.getItem("ironlog_ex_rest")||"{}");
+      all[restKey]=sec;
+      localStorage.setItem("ironlog_ex_rest",JSON.stringify(all));
+    }catch(e){}
+  };
+  var ers=c.useState(""),edRest=ers[0],setEdRest=ers[1];
+  c.useEffect(function(){if(edOpen)setEdRest(ILRestFmt(restSec));},[edOpen]);
+  /* ---- rest timer: uses the single shared/global timer (P.timer) instead of its own clock, so the small badge here and the big bar at the top of the day are always the exact same timer ---- */
+  var isThisRest=!!(P.timer&&P.activeRest===restKey);
+  var restRunning=isThisRest&&P.timer.running;
+  var restRemain=isThisRest?P.timer.seconds:0;
+  var startRestCountdown=function(){
+    P.onActiveRest&&P.onActiveRest();
+    P.timer&&P.timer.startCountdown&&P.timer.startCountdown(restSec);
+  };
+  /* ---- rest badge is hidden by default; it slides in next to the set-count badge only while resting, then slides back in when the rest ends ---- */
+  var bms=c.useState(false),badgeMounted=bms[0],setBadgeMounted=bms[1];
+  var bvs=c.useState(false),badgeVisible=bvs[0],setBadgeVisible=bvs[1];
+  var badgeHideRef=c.useRef(null);
+  c.useEffect(function(){
+    clearTimeout(badgeHideRef.current);
+    if(restRunning){
+      setBadgeMounted(true);
+      requestAnimationFrame(function(){requestAnimationFrame(function(){setBadgeVisible(true);});});
+    }else{
+      setBadgeVisible(false);
+      badgeHideRef.current=setTimeout(function(){setBadgeMounted(false);},260);
+    }
+    return function(){clearTimeout(badgeHideRef.current);};
+  },[restRunning]);
   var fos=c.useState(false),fOpen=fos[0],setFOpen=fos[1];
   var fws=c.useState(""),fW=fws[0],setFW=fws[1];
   var frs=c.useState(""),fR=frs[0],setFR=frs[1];
@@ -543,6 +613,8 @@ function ILEx(P){
   };
   var saveMeta=function(){
     P.onEditMeta&&P.onEditMeta(edName,edSets);
+    var parsedRest=ILRestParse(edRest);
+    if(parsedRest!=null&&parsedRest>0)saveRestSec(parsedRest);
     setEdOpen(false);
   };
   var headerRef=c.useRef(null);
@@ -563,6 +635,7 @@ function ILEx(P){
     if(!canAdd)return;
     P.onAdd(parseFloat(reps),parseFloat(weight)||0);
     setDr({});
+    startRestCountdown();
   };
   var status=n>0?ILh("span",null,ILltr(n+" مجموعة"),"  ·  ",ILltr(totReps+" عدة"),vol>0&&"  ·  ",vol>0&&ILltr(ILnum(vol)+"kg"))
     :(prev?ILh("span",null,"آخر مرة: ",ILltr(ILsum(prev.sets,3))):"لسه متسجلش حاجة");
@@ -578,6 +651,15 @@ function ILEx(P){
   };
   var subLabel=function(t){return ILh("p",{style:{margin:"12px 0 7px",fontSize:12,color:"#8a8a93",fontFamily:ILF.b,direction:"rtl",textAlign:"right"}},t);};
 
+  /* ---- clock icon + rest time badge: hidden until resting, slides out from the set-count badge, slides back into it when the rest ends. edit the rest time via the swipe-right "تعديل" action ---- */
+  var clockBadge=badgeMounted&&ILh("span",{key:"rest",title:"وقت الراحة",
+      style:{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 7px",borderRadius:7,marginRight:7,flexShrink:0,
+        animation:badgeVisible?"ilBadgeIn .4s cubic-bezier(.16,1,.3,1) both, ilClockGlow 1.8s ease-in-out .4s infinite":"ilBadgeOut .3s cubic-bezier(.32,0,.67,0) both",
+        background:ILREST_YELLOW+"22",
+        border:"1px solid "+ILREST_YELLOW+"aa",
+        color:ILREST_YELLOW}},
+    ILClockIcon({size:12,animate:restRunning}),
+    ILh("span",{style:{fontFamily:ILF.n,fontSize:11,fontWeight:700,letterSpacing:.3}},ILRestFmt(restRemain)));
   /* ---- header (swipe-to-delete wrapper + inner content) ---- */
   var headerInner=ILh("div",{onClick:function(ev){if(sw.revealed){sw.close();return;}if(sw.dragged.current){sw.dragged.current=false;return;}P.onToggle();},
       style:{display:"flex",alignItems:"center",padding:"6px 14px 6px 4px",cursor:"pointer",minHeight:62,position:"relative",background:open?A+"12":"#0f0f12",transform:"translateX("+sw.x+"px)",transition:sw.anim?"transform .18s ease":"none"}},
@@ -589,6 +671,7 @@ function ILEx(P){
         S.sets&&ILh("span",{style:{background:A+"1c",border:"1px solid "+A+"44",borderRadius:7,padding:"1px 7px",fontSize:11,fontFamily:ILF.n,fontWeight:600,color:A,flexShrink:0}},S.sets)),
       ILh("div",{style:{fontSize:12,color:n>0?"#b9b9c1":"#6f6f78",fontFamily:ILF.b,direction:"ltr",textAlign:"left",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},status)),
     n>0&&ILh("span",{style:{minWidth:24,height:24,borderRadius:12,background:A,color:"#fff",fontFamily:ILF.n,fontWeight:700,fontSize:12,display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"0 7px",marginRight:8,flexShrink:0}},n),
+    clockBadge,
     ILh("span",{style:{color:open?A:"#5d5d67",display:"inline-flex",marginLeft:4}},ILChev({up:open})));
   var header=ILh("div",{ref:headerRef,onPointerDown:sw.down,onPointerMove:sw.move,onPointerUp:function(ev){sw.end(false);},onPointerCancel:function(ev){sw.end(true);},
       style:{position:"relative",overflow:"hidden",touchAction:"pan-y"}},
@@ -646,16 +729,16 @@ function ILEx(P){
         ILh("span",{style:{fontSize:11,color:ILGREEN,fontFamily:ILF.b,display:"flex",alignItems:"center",gap:4,opacity:notesSaved?1:0,transition:"opacity .35s"}},"\u2713 اتحفظ")),
       ILh("textarea",{value:S.notes||"",onChange:function(ev){onNotesChange(ev.target.value);},placeholder:"اكتب أي حاجة عايز تفتكرها عن التمرين ده...",rows:4,style:{width:"100%",boxSizing:"border-box",background:"#0b0b0d",borderRadius:10,padding:"12px 14px",border:"1px solid "+A+"20",color:"#ddd",fontSize:13,lineHeight:1.6,fontFamily:ILF.b,direction:"rtl",textAlign:"right",resize:"vertical"}})),
     n>0&&ILh("div",{style:{marginBottom:12}},
-      ILh("div",{style:{display:"grid",gridTemplateColumns:"34px 1fr 1fr",gap:8,padding:"0 5px",marginBottom:6}},
+      ILh("div",{style:{display:"grid",gridTemplateColumns:"34px 1fr 1fr 34px",gap:8,padding:"0 5px",marginBottom:6}},
         ILh("span",null),
         ILh("span",{style:Object.assign({},_.label,{fontSize:10,textAlign:"center"})},"عدات"),
-        ILh("span",{style:Object.assign({},_.label,{fontSize:10,textAlign:"center"})},"وزن kg")),
+        ILh("span",{style:Object.assign({},_.label,{fontSize:10,textAlign:"center"})},"وزن kg"),
+        ILh("span",null)),
       C.map(function(x,i){
         var t=ILtarget(prev,i,rule);
         var hit=!!(t&&x.reps>=t.reps&&(x.weight||0)>=t.weight);
         return ILh(ILSet,{key:i,idx:i,set:x,hit:hit,accent:A,onCommit:function(r,w){P.onEdit(i,r,w);},onDelete:function(){P.onDel(i);},onColor:function(color){P.onSetColor&&P.onSetColor(i,color);},onNote:function(note){P.onSetNote&&P.onSetNote(i,note);}});
-      }),
-      ILh("p",{style:{margin:"8px 0 0",fontSize:11,color:"#5d5d67",fontFamily:ILF.b,direction:"rtl",textAlign:"center"}},"اسحب المجموعة يمين أو شمال عشان تمسحها  ·  دوس على الرقم عشان تعدّله")),
+      })),
     ILh("div",{style:{display:"flex",alignItems:"baseline",justifyContent:"space-between",margin:"2px 2px 8px"}},
       ILh("span",{style:{fontFamily:ILF.n,fontSize:13,fontWeight:600,color:"#fff",letterSpacing:.5}},"SET "+(n+1)),
       target&&ILh("span",{style:{fontFamily:ILF.b,fontSize:12,color:A,direction:"rtl"}},"الهدف: ",ILltr(String(target.reps))," عدة",target.weight?" × ":null,target.weight?ILltr(ILnum(target.weight)+" kg"):null)),
@@ -673,7 +756,13 @@ function ILEx(P){
         ILh("input",{type:"text",value:edName,placeholder:"اسم التمرين",onChange:function(ev){setEdName(ev.target.value);},style:Object.assign({},_.input,{flex:1,direction:"rtl",textAlign:"right"})}),
         ILh("input",{type:"text",value:edSets,placeholder:"3\u00D710",onChange:function(ev){setEdSets(ev.target.value);},onKeyDown:function(ev){if(ev.key==="Enter")saveMeta();},style:Object.assign({},_.input,{width:72,textAlign:"center",direction:"ltr",padding:"9px 6px",flexShrink:0})}),
         ILh("button",{type:"button",onClick:saveMeta,style:Object.assign({},_.btn(A),{padding:"10px 14px"})},"\u2713"),
-        ILh("button",{type:"button",onClick:function(){setEdOpen(false);setEdName(S.name);setEdSets(S.sets||"");},style:Object.assign({},_.outlineBtn("#444"),{padding:"10px 12px"})},"\u2715")));
+        ILh("button",{type:"button",onClick:function(){setEdOpen(false);setEdName(S.name);setEdSets(S.sets||"");setEdRest(ILRestFmt(restSec));},style:Object.assign({},_.outlineBtn("#444"),{padding:"10px 12px"})},"\u2715")),
+      ILh("div",{style:{display:"flex",gap:8,alignItems:"center",marginTop:10,flexWrap:"wrap"}},
+        ILh("span",{style:{color:ILREST_YELLOW,display:"inline-flex"}},ILClockIcon({size:14})),
+        ILh("input",{type:"text",value:edRest,placeholder:"1:30",onChange:function(ev){setEdRest(ev.target.value);},onKeyDown:function(ev){if(ev.key==="Enter")saveMeta();},style:Object.assign({},_.input,{width:64,textAlign:"center",direction:"ltr",padding:"9px 6px",flexShrink:0})}),
+        [[15,"15s"],[30,"30s"],[60,"1m"],[90,"1:30"],[120,"2m"],[180,"3m"]].map(function(q){
+          return ILh("button",{key:q[0],type:"button",onClick:function(){setEdRest(q[1]);},style:{padding:"5px 9px",borderRadius:8,border:"1px solid "+ILREST_YELLOW+"55",background:ILREST_YELLOW+"14",color:ILREST_YELLOW,fontFamily:ILF.n,fontSize:11,fontWeight:600,cursor:"pointer"}},q[1]);
+        })));
 
   return ILh("div",{ref:P.cardRef,style:{position:"relative",zIndex:P.dragging?30:1,marginBottom:10,borderRadius:18,border:"1px solid "+(open?A+"66":n>0?A+"33":"rgba(255,255,255,0.08)"),background:open?"linear-gradient(180deg,"+A+"12 0%,#0f0f12 46%)":"#0f0f12",overflow:"hidden",boxShadow:P.dragging?"0 22px 48px rgba(0,0,0,0.7)":(open?"0 10px 30px rgba(0,0,0,0.45)":"none"),userSelect:P.dragging?"none":"auto",WebkitUserSelect:P.dragging?"none":"auto"}},
     header,edRow,body);
@@ -703,6 +792,7 @@ function ILTimerBar(P){
 function ILLog(P){
   var data=P.data,save=P.save,s=P.s,p=P.p,dk=P.dateKey,ac=P.ac,A=ac.accent,exs=P.exs,gym=data.gym||{};
   var dg=c.useState(null),dragName=dg[0],setDragName=dg[1];
+  var ars=c.useState(null),activeRest=ars[0],setActiveRest=ars[1];
   var us=c.useState(null),undo=us[0],setUndo=us[1];
   var cardRefs=c.useRef({}),dragRef=c.useRef(null),uT=c.useRef(null),raf=c.useRef(0);
   var names=exs.map(function(x){return x._key||x.name;});
@@ -714,13 +804,13 @@ function ILLog(P){
   };
   var addSet=function(nm,r,w){
     put(nm,setsOf(nm).concat([{reps:r,weight:w}]));
-    if(P.timer&&P.timer.startCountdown)P.timer.startCountdown();
   };
   var editSet=function(nm,i,r,w){var a=setsOf(nm).slice();a[i]=Object.assign({},a[i],{reps:r,weight:w});put(nm,a);};
   var setSetMeta=function(nm,i,patch){var a=setsOf(nm).slice();a[i]=Object.assign({},a[i],patch);put(nm,a);};
   var delSet=function(nm,i){
     var a=setsOf(nm).slice(),gone=a.splice(i,1)[0];
     put(nm,a);
+    if(P.timer&&P.timer.running){P.timer.pause();setActiveRest(null);}
     clearTimeout(uT.current);
     setUndo({nm:nm,i:i,set:gone,n:i+1});
     uT.current=setTimeout(function(){setUndo(null);},5000);
@@ -848,6 +938,7 @@ function ILLog(P){
     exs.map(function(S){
       var nm=S._key||S.name;
       return ILh(ILEx,{key:nm,ex:S,sets:setsOf(nm),ac:ac,prev:ILprev(gym,dk,nm),rule:ILrule(data,nm),open:P.open===nm,dragging:dragName===nm,
+        timer:P.timer,activeRest:activeRest,onActiveRest:function(){setActiveRest(nm);},
         failurePR:prs[nm],
         onSaveFailure:function(w,r){saveFailurePR(nm,w,r);},
         cardRef:function(el){cardRefs.current[nm]=el;},
